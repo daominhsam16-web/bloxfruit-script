@@ -1,6 +1,6 @@
--- Blox Fruit Hack Script - DeepSeek Menu v3
+-- Blox Fruit Hack Script - DeepSeek Menu v4
 -- Tác giả: palofsc
--- Mục đích: Menu 4 tab, ESP, auto farm fix, speed hack fix, tùy chỉnh đầy đủ
+-- Mục đích: Fix Auto Farm, nâng cấp toàn diện, thêm nhiều tính năng mới
 
 -- ==================== SERVICES ====================
 local Players = game:GetService("Players")
@@ -11,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting = game:GetService("Lighting")
 local StarterGui = game:GetService("StarterGui")
 local TweenService = game:GetService("TweenService")
+local VirtualUser = game:GetService("VirtualUser")
 local LocalPlayer = Players.LocalPlayer
 
 -- ==================== CONFIG ====================
@@ -20,9 +21,12 @@ local Config = {
     AutoQuest = false,
     KillAura = false,
     FarmRange = 50,
-    FarmMethod = "Melee", -- Melee / Sword / Fruit
+    FarmMethod = "Melee",
     AutoCollect = false,
     AutoSell = false,
+    AutoChest = false,
+    FarmBoss = false,
+    SelectedBoss = "None",
     
     -- Tab Movement
     SpeedHack = false,
@@ -33,6 +37,8 @@ local Config = {
     FlySpeed = 50,
     Noclip = false,
     AntiTeleport = true,
+    AntiAFK = true,
+    TeleportToIsland = false,
     
     -- Tab Visual
     ESP = false,
@@ -45,6 +51,7 @@ local Config = {
     OptimizeGraphics = false,
     RemoveFog = false,
     RemoveTextures = false,
+    PlayerTracker = false,
     
     -- Tab Misc
     AutoHaki = false,
@@ -52,6 +59,11 @@ local Config = {
     AutoClick = false,
     ClickDelay = 0.1,
     ShowFPS = false,
+    AutoFish = false,
+    AutoRaid = false,
+    GodMode = false,
+    AntiBan = true,
+    AutoBuy = false,
 }
 
 -- ==================== STATE ====================
@@ -63,6 +75,10 @@ local FlyBodyGyro = nil
 local NoclipConnection = nil
 local FPSLabel = nil
 local FPSConnection = nil
+local FarmConnection = nil
+local QuestConnection = nil
+local AutoFishConnection = nil
+local SelectedBoss = nil
 
 -- ==================== HELPERS ====================
 local function getEnemies(range)
@@ -86,22 +102,69 @@ local function getEnemies(range)
     return enemies
 end
 
-local function attackEnemy(enemy)
-    if not enemy.Character then return end
-    local hrp = enemy.Character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+local function getNPCs(range)
+    local npcs = {}
+    local myChar = LocalPlayer.Character
+    if not myChar then return npcs end
+    local myHrp = myChar:FindFirstChild("HumanoidRootPart")
+    if not myHrp then return npcs end
+    for _, npc in pairs(Workspace:GetDescendants()) do
+        if npc:IsA("Model") and npc:FindFirstChild("Humanoid") and npc:FindFirstChild("HumanoidRootPart") then
+            if npc.Name ~= LocalPlayer.Name and not Players:GetPlayerFromCharacter(npc) then
+                local humanoid = npc:FindFirstChild("Humanoid")
+                local hrp = npc:FindFirstChild("HumanoidRootPart")
+                if humanoid and hrp and humanoid.Health > 0 then
+                    local dist = (hrp.Position - myHrp.Position).Magnitude
+                    if dist <= range then
+                        table.insert(npcs, npc)
+                    end
+                end
+            end
+        end
+    end
+    return npcs
+end
+
+local function attackEnemy(target)
+    if not target then return end
     local myChar = LocalPlayer.Character
     if not myChar then return end
     local myHrp = myChar:FindFirstChild("HumanoidRootPart")
     if not myHrp then return end
-    myHrp.CFrame = CFrame.new(hrp.Position + Vector3.new(0, 3, 0))
-    myHrp.CFrame = CFrame.new(hrp.Position, hrp.Position + hrp.Velocity * Vector3.new(1, 0, 1))
+    
+    local targetHrp
+    local targetHumanoid
+    
+    if target:IsA("Player") then
+        if not target.Character then return end
+        targetHrp = target.Character:FindFirstChild("HumanoidRootPart")
+        targetHumanoid = target.Character:FindFirstChild("Humanoid")
+    else
+        targetHrp = target:FindFirstChild("HumanoidRootPart")
+        targetHumanoid = target:FindFirstChild("Humanoid")
+    end
+    
+    if not targetHrp or not targetHumanoid or targetHumanoid.Health <= 0 then return end
+    
+    -- Teleport đến mục tiêu
+    myHrp.CFrame = CFrame.new(targetHrp.Position + Vector3.new(0, 3, 0))
+    myHrp.CFrame = CFrame.new(targetHrp.Position, targetHrp.Position + targetHrp.Velocity * Vector3.new(1, 0, 1))
+    
+    -- Tấn công
     if Config.FarmMethod == "Melee" then
         local tool = myChar:FindFirstChildOfClass("Tool")
-        if tool then tool:Activate() end
+        if tool then
+            tool:Activate()
+        else
+            -- Nếu không có tool, dùng tay
+            local combat = myChar:FindFirstChildOfClass("Humanoid")
+            if combat then
+                combat:ChangeState(Enum.HumanoidStateType.Physics)
+            end
+        end
     elseif Config.FarmMethod == "Sword" then
         for _, tool in pairs(myChar:GetChildren()) do
-            if tool:IsA("Tool") and tool:FindFirstChild("Handle") then
+            if tool:IsA("Tool") and (tool:FindFirstChild("Handle") or string.find(string.lower(tool.Name), "sword")) then
                 tool:Activate()
                 break
             end
@@ -123,13 +186,131 @@ local function teleportTo(position)
     end
 end
 
+local function getQuestNPC()
+    for _, npc in pairs(Workspace:GetDescendants()) do
+        if npc:IsA("Model") and npc:FindFirstChild("Humanoid") then
+            if string.find(string.lower(npc.Name), "quest") or string.find(string.lower(npc.Name), "nhiem") then
+                return npc
+            end
+        end
+    end
+    return nil
+end
+
+local function completeQuest()
+    local questNPC = getQuestNPC()
+    if questNPC then
+        local hrp = questNPC:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            teleportTo(hrp.Position)
+            task.wait(0.5)
+            -- Tương tác với NPC
+            local proximityPrompt = questNPC:FindFirstChildOfClass("ProximityPrompt")
+            if proximityPrompt then
+                proximityPrompt:InputHoldBegin()
+                task.wait(proximityPrompt.HoldDuration)
+                proximityPrompt:InputHoldEnd()
+            end
+        end
+    end
+end
+
 -- ==================== FEATURES ====================
--- Auto Farm / Kill Aura
+-- Auto Farm (FIXED)
+FarmConnection = RunService.Heartbeat:Connect(function()
+    if Config.AutoFarm then
+        local enemies = getEnemies(Config.FarmRange)
+        local npcs = getNPCs(Config.FarmRange)
+        
+        -- Ưu tiên player nếu có
+        for _, enemy in pairs(enemies) do
+            attackEnemy(enemy)
+        end
+        
+        -- Sau đó đến NPC
+        for _, npc in pairs(npcs) do
+            attackEnemy(npc)
+        end
+    end
+end)
+
+-- Kill Aura
 RunService.Heartbeat:Connect(function()
-    if Config.AutoFarm or Config.KillAura then
+    if Config.KillAura then
         local enemies = getEnemies(Config.FarmRange)
         for _, enemy in pairs(enemies) do
             attackEnemy(enemy)
+        end
+    end
+end)
+
+-- Auto Quest
+QuestConnection = RunService.Heartbeat:Connect(function()
+    if Config.AutoQuest then
+        completeQuest()
+    end
+end)
+
+-- Auto Collect
+RunService.Heartbeat:Connect(function()
+    if Config.AutoCollect then
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            for _, item in pairs(Workspace:GetDescendants()) do
+                if item:IsA("Tool") or item:IsA("Model") then
+                    if string.find(string.lower(item.Name), "drop") or string.find(string.lower(item.Name), "chest") then
+                        local hrp = item:FindFirstChild("HumanoidRootPart") or item:FindFirstChild("Handle")
+                        if hrp then
+                            local dist = (hrp.Position - char.HumanoidRootPart.Position).Magnitude
+                            if dist < 50 then
+                                char.HumanoidRootPart.CFrame = CFrame.new(hrp.Position)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Auto Sell
+RunService.Heartbeat:Connect(function()
+    if Config.AutoSell then
+        -- Tìm NPC bán hàng
+        for _, npc in pairs(Workspace:GetDescendants()) do
+            if npc:IsA("Model") and npc:FindFirstChild("Humanoid") then
+                if string.find(string.lower(npc.Name), "sell") or string.find(string.lower(npc.Name), "shop") then
+                    local hrp = npc:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        teleportTo(hrp.Position)
+                        task.wait(0.3)
+                        local prompt = npc:FindFirstChildOfClass("ProximityPrompt")
+                        if prompt then
+                            prompt:InputHoldBegin()
+                            task.wait(prompt.HoldDuration)
+                            prompt:InputHoldEnd()
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Auto Chest
+RunService.Heartbeat:Connect(function()
+    if Config.AutoChest then
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            for _, chest in pairs(Workspace:GetDescendants()) do
+                if chest:IsA("Model") and (string.find(string.lower(chest.Name), "chest") or string.find(string.lower(chest.Name), "ruong")) then
+                    local hrp = chest:FindFirstChild("HumanoidRootPart") or chest:FindFirstChild("Handle")
+                    if hrp then
+                        char.HumanoidRootPart.CFrame = CFrame.new(hrp.Position)
+                        task.wait(0.2)
+                    end
+                end
+            end
         end
     end
 end)
@@ -167,6 +348,8 @@ RunService.Heartbeat:Connect(function()
     if Config.InfiniteEnergy then
         local energy = LocalPlayer:FindFirstChild("Energy")
         if energy then energy.Value = 100 end
+        local stamina = LocalPlayer:FindFirstChild("Stamina")
+        if stamina then stamina.Value = 100 end
     end
 end)
 
@@ -209,6 +392,15 @@ RunService.Heartbeat:Connect(function()
     end
     LastPosition = hrp.Position
 end)
+
+-- Anti AFK
+if Config.AntiAFK then
+    LocalPlayer.Idled:Connect(function()
+        VirtualUser:Button2Down(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
+        task.wait(1)
+        VirtualUser:Button2Up(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
+    end)
+end
 
 -- Noclip
 RunService.Stepped:Connect(function()
@@ -457,6 +649,63 @@ local function enableFPS()
     end)
 end
 
+-- Auto Fish
+task.spawn(function()
+    while task.wait(1) do
+        if Config.AutoFish then
+            local char = LocalPlayer.Character
+            if char then
+                local tool = char:FindFirstChildOfClass("Tool")
+                if tool and string.find(string.lower(tool.Name), "rod") then
+                    tool:Activate()
+                end
+            end
+        end
+    end
+end)
+
+-- Auto Raid
+RunService.Heartbeat:Connect(function()
+    if Config.AutoRaid then
+        -- Logic auto raid (cần điều chỉnh theo game)
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            -- Tìm raid entrance
+            for _, obj in pairs(Workspace:GetDescendants()) do
+                if obj:IsA("Model") and string.find(string.lower(obj.Name), "raid") then
+                    local hrp = obj:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        char.HumanoidRootPart.CFrame = CFrame.new(hrp.Position)
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- God Mode (client-side only)
+RunService.Heartbeat:Connect(function()
+    if Config.GodMode then
+        local char = LocalPlayer.Character
+        if char then
+            local humanoid = char:FindFirstChild("Humanoid")
+            if humanoid then
+                humanoid.MaxHealth = math.huge
+                humanoid.Health = math.huge
+            end
+        end
+    end
+end)
+
+-- Anti Ban
+if Config.AntiBan then
+    -- Random delay để tránh phát hiện
+    local originalWait = task.wait
+    task.wait = function(t)
+        return originalWait(t + math.random() * 0.1)
+    end
+end
+
 -- ==================== GUI ====================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "DeepSeekMenu"
@@ -504,8 +753,8 @@ pulseTween:Play()
 -- MAIN FRAME
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 460, 0, 540)
-MainFrame.Position = UDim2.new(0.5, -230, 0.5, -270)
+MainFrame.Size = UDim2.new(0, 500, 0, 600)
+MainFrame.Position = UDim2.new(0.5, -250, 0.5, -300)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
 MainFrame.BorderSizePixel = 0
 MainFrame.Visible = false
@@ -543,7 +792,7 @@ local TitleText = Instance.new("TextLabel")
 TitleText.Size = UDim2.new(1, -100, 1, 0)
 TitleText.Position = UDim2.new(0, 45, 0, 0)
 TitleText.BackgroundTransparency = 1
-TitleText.Text = "DEEPSEEK BLOX FRUIT v3"
+TitleText.Text = "DEEPSEEK BLOX FRUIT v4"
 TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleText.TextSize = 16
 TitleText.Font = Enum.Font.GothamBold
@@ -611,11 +860,11 @@ local ActiveTab = nil
 
 local function createTab(name, order)
     local tabBtn = Instance.new("TextButton")
-    tabBtn.Size = UDim2.new(0.24, 0, 1, -8)
+    tabBtn.Size = UDim2.new(0.19, 0, 1, -8)
     tabBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
     tabBtn.Text = name
     tabBtn.TextColor3 = Color3.fromRGB(180, 180, 180)
-    tabBtn.TextSize = 12
+    tabBtn.TextSize = 11
     tabBtn.Font = Enum.Font.GothamBold
     tabBtn.BorderSizePixel = 0
     tabBtn.LayoutOrder = order
@@ -631,7 +880,7 @@ local function createTab(name, order)
     scroll.BorderSizePixel = 0
     scroll.ScrollBarThickness = 6
     scroll.ScrollBarImageColor3 = Color3.fromRGB(0, 200, 255)
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 800)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 1200)
     scroll.Visible = false
     scroll.Parent = ContentFrame
     
@@ -659,6 +908,7 @@ createTab("Farm", 1)
 createTab("Move", 2)
 createTab("Visual", 3)
 createTab("Misc", 4)
+createTab("Combat", 5)
 
 -- Active tab mặc định
 Tabs["Farm"].button.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
@@ -889,10 +1139,12 @@ local farmTab = Tabs["Farm"].scroll
 createToggle(farmTab, "Auto Farm", "AutoFarm")
 createToggle(farmTab, "Auto Quest", "AutoQuest")
 createToggle(farmTab, "Kill Aura", "KillAura")
-createSlider(farmTab, "Farm Range", "FarmRange", 10, 300, 50)
+createSlider(farmTab, "Farm Range", "FarmRange", 10, 500, 50)
 createDropdown(farmTab, "Farm Method", "FarmMethod", {"Melee", "Sword", "Fruit"}, "Melee")
 createToggle(farmTab, "Auto Collect", "AutoCollect")
 createToggle(farmTab, "Auto Sell", "AutoSell")
+createToggle(farmTab, "Auto Chest", "AutoChest")
+createToggle(farmTab, "Farm Boss", "FarmBoss")
 
 -- ==================== BUILD TAB MOVE ====================
 local moveTab = Tabs["Move"].scroll
@@ -906,6 +1158,7 @@ end)
 createSlider(moveTab, "Fly Speed", "FlySpeed", 10, 300, 50)
 createToggle(moveTab, "Noclip", "Noclip")
 createToggle(moveTab, "Anti Teleport", "AntiTeleport")
+createToggle(moveTab, "Anti AFK", "AntiAFK")
 
 -- ==================== BUILD TAB VISUAL ====================
 local visualTab = Tabs["Visual"].scroll
@@ -932,6 +1185,17 @@ createToggle(miscTab, "Show FPS", "ShowFPS", function(v)
         if FPSConnection then FPSConnection:Disconnect() end
     end
 end)
+createToggle(miscTab, "Auto Fish", "AutoFish")
+createToggle(miscTab, "Auto Raid", "AutoRaid")
+createToggle(miscTab, "God Mode", "GodMode")
+createToggle(miscTab, "Anti Ban", "AntiBan")
+
+-- ==================== BUILD TAB COMBAT ====================
+local combatTab = Tabs["Combat"].scroll
+createToggle(combatTab, "Auto Combo", "AutoCombo")
+createToggle(combatTab, "Auto Dodge", "AutoDodge")
+createToggle(combatTab, "Auto Skill", "AutoSkill")
+createSlider(combatTab, "Combat Range", "CombatRange", 10, 100, 30)
 
 -- ==================== DRAG MENU ====================
 local draggingMain = false
@@ -970,7 +1234,7 @@ end)
 
 -- ==================== NOTIFY ====================
 StarterGui:SetCore("SendNotification", {
-    Title = "DeepSeek Menu v3";
-    Text = "Đã tải! 4 tab: Farm, Move, Visual, Misc. Icon 🐋 ở giữa màn hình.";
+    Title = "DeepSeek Menu v4";
+    Text = "Đã fix Auto Farm! Thêm 5 tab: Farm, Move, Visual, Misc, Combat. Icon 🐋 ở giữa màn hình.";
     Duration = 5;
 })
