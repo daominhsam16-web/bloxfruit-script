@@ -1,6 +1,6 @@
--- Blox Fruit Hack Script - DeepSeek Menu v4
+-- Blox Fruit Hack Script - DeepSeek Menu v5
 -- Tác giả: palofsc
--- Mục đích: Fix Auto Farm, nâng cấp toàn diện, thêm nhiều tính năng mới
+-- Mục đích: Fix lỗi v4, tối ưu, thêm bypass anti-cheat và tính năng mới
 
 -- ==================== SERVICES ====================
 local Players = game:GetService("Players")
@@ -16,7 +16,6 @@ local LocalPlayer = Players.LocalPlayer
 
 -- ==================== CONFIG ====================
 local Config = {
-    -- Tab Farm
     AutoFarm = false,
     AutoQuest = false,
     KillAura = false,
@@ -26,9 +25,7 @@ local Config = {
     AutoSell = false,
     AutoChest = false,
     FarmBoss = false,
-    SelectedBoss = "None",
-    
-    -- Tab Movement
+
     SpeedHack = false,
     SpeedValue = 100,
     JumpPower = 200,
@@ -38,12 +35,9 @@ local Config = {
     Noclip = false,
     AntiTeleport = true,
     AntiAFK = true,
-    TeleportToIsland = false,
-    
-    -- Tab Visual
+
     ESP = false,
     ESPColor = Color3.fromRGB(255, 0, 0),
-    ESPBox = true,
     ESPName = true,
     ESPHealth = true,
     ESPDistance = true,
@@ -51,19 +45,20 @@ local Config = {
     OptimizeGraphics = false,
     RemoveFog = false,
     RemoveTextures = false,
-    PlayerTracker = false,
-    
-    -- Tab Misc
+
     AutoHaki = false,
     InfiniteEnergy = false,
     AutoClick = false,
     ClickDelay = 0.1,
     ShowFPS = false,
     AutoFish = false,
-    AutoRaid = false,
     GodMode = false,
     AntiBan = true,
-    AutoBuy = false,
+
+    AutoCombo = false,
+    AutoDodge = false,
+    AutoSkill = false,
+    CombatRange = 30,
 }
 
 -- ==================== STATE ====================
@@ -72,12 +67,8 @@ local ESPObjects = {}
 local FlyConnection = nil
 local FlyBodyVelocity = nil
 local FlyBodyGyro = nil
-local NoclipConnection = nil
 local FPSLabel = nil
 local FPSConnection = nil
-local FarmConnection = nil
-local QuestConnection = nil
-local AutoFishConnection = nil
 local SelectedBoss = nil
 
 -- ==================== HELPERS ====================
@@ -131,10 +122,7 @@ local function attackEnemy(target)
     if not myChar then return end
     local myHrp = myChar:FindFirstChild("HumanoidRootPart")
     if not myHrp then return end
-    
-    local targetHrp
-    local targetHumanoid
-    
+    local targetHrp, targetHumanoid
     if target:IsA("Player") then
         if not target.Character then return end
         targetHrp = target.Character:FindFirstChild("HumanoidRootPart")
@@ -143,25 +131,12 @@ local function attackEnemy(target)
         targetHrp = target:FindFirstChild("HumanoidRootPart")
         targetHumanoid = target:FindFirstChild("Humanoid")
     end
-    
     if not targetHrp or not targetHumanoid or targetHumanoid.Health <= 0 then return end
-    
-    -- Teleport đến mục tiêu
     myHrp.CFrame = CFrame.new(targetHrp.Position + Vector3.new(0, 3, 0))
     myHrp.CFrame = CFrame.new(targetHrp.Position, targetHrp.Position + targetHrp.Velocity * Vector3.new(1, 0, 1))
-    
-    -- Tấn công
     if Config.FarmMethod == "Melee" then
         local tool = myChar:FindFirstChildOfClass("Tool")
-        if tool then
-            tool:Activate()
-        else
-            -- Nếu không có tool, dùng tay
-            local combat = myChar:FindFirstChildOfClass("Humanoid")
-            if combat then
-                combat:ChangeState(Enum.HumanoidStateType.Physics)
-            end
-        end
+        if tool then tool:Activate() end
     elseif Config.FarmMethod == "Sword" then
         for _, tool in pairs(myChar:GetChildren()) do
             if tool:IsA("Tool") and (tool:FindFirstChild("Handle") or string.find(string.lower(tool.Name), "sword")) then
@@ -186,51 +161,14 @@ local function teleportTo(position)
     end
 end
 
-local function getQuestNPC()
-    for _, npc in pairs(Workspace:GetDescendants()) do
-        if npc:IsA("Model") and npc:FindFirstChild("Humanoid") then
-            if string.find(string.lower(npc.Name), "quest") or string.find(string.lower(npc.Name), "nhiem") then
-                return npc
-            end
-        end
-    end
-    return nil
-end
-
-local function completeQuest()
-    local questNPC = getQuestNPC()
-    if questNPC then
-        local hrp = questNPC:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            teleportTo(hrp.Position)
-            task.wait(0.5)
-            -- Tương tác với NPC
-            local proximityPrompt = questNPC:FindFirstChildOfClass("ProximityPrompt")
-            if proximityPrompt then
-                proximityPrompt:InputHoldBegin()
-                task.wait(proximityPrompt.HoldDuration)
-                proximityPrompt:InputHoldEnd()
-            end
-        end
-    end
-end
-
 -- ==================== FEATURES ====================
--- Auto Farm (FIXED)
-FarmConnection = RunService.Heartbeat:Connect(function()
+-- Auto Farm
+RunService.Heartbeat:Connect(function()
     if Config.AutoFarm then
         local enemies = getEnemies(Config.FarmRange)
+        for _, enemy in pairs(enemies) do attackEnemy(enemy) end
         local npcs = getNPCs(Config.FarmRange)
-        
-        -- Ưu tiên player nếu có
-        for _, enemy in pairs(enemies) do
-            attackEnemy(enemy)
-        end
-        
-        -- Sau đó đến NPC
-        for _, npc in pairs(npcs) do
-            attackEnemy(npc)
-        end
+        for _, npc in pairs(npcs) do attackEnemy(npc) end
     end
 end)
 
@@ -238,16 +176,30 @@ end)
 RunService.Heartbeat:Connect(function()
     if Config.KillAura then
         local enemies = getEnemies(Config.FarmRange)
-        for _, enemy in pairs(enemies) do
-            attackEnemy(enemy)
-        end
+        for _, enemy in pairs(enemies) do attackEnemy(enemy) end
     end
 end)
 
 -- Auto Quest
-QuestConnection = RunService.Heartbeat:Connect(function()
+RunService.Heartbeat:Connect(function()
     if Config.AutoQuest then
-        completeQuest()
+        for _, npc in pairs(Workspace:GetDescendants()) do
+            if npc:IsA("Model") and npc:FindFirstChild("Humanoid") then
+                if string.find(string.lower(npc.Name), "quest") then
+                    local hrp = npc:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        teleportTo(hrp.Position)
+                        task.wait(0.5)
+                        local prompt = npc:FindFirstChildOfClass("ProximityPrompt")
+                        if prompt then
+                            prompt:InputHoldBegin()
+                            task.wait(prompt.HoldDuration)
+                            prompt:InputHoldEnd()
+                        end
+                    end
+                end
+            end
+        end
     end
 end)
 
@@ -262,9 +214,7 @@ RunService.Heartbeat:Connect(function()
                         local hrp = item:FindFirstChild("HumanoidRootPart") or item:FindFirstChild("Handle")
                         if hrp then
                             local dist = (hrp.Position - char.HumanoidRootPart.Position).Magnitude
-                            if dist < 50 then
-                                char.HumanoidRootPart.CFrame = CFrame.new(hrp.Position)
-                            end
+                            if dist < 50 then char.HumanoidRootPart.CFrame = CFrame.new(hrp.Position) end
                         end
                     end
                 end
@@ -276,7 +226,6 @@ end)
 -- Auto Sell
 RunService.Heartbeat:Connect(function()
     if Config.AutoSell then
-        -- Tìm NPC bán hàng
         for _, npc in pairs(Workspace:GetDescendants()) do
             if npc:IsA("Model") and npc:FindFirstChild("Humanoid") then
                 if string.find(string.lower(npc.Name), "sell") or string.find(string.lower(npc.Name), "shop") then
@@ -336,9 +285,7 @@ UserInputService.JumpRequest:Connect(function()
         local char = LocalPlayer.Character
         if char then
             local humanoid = char:FindFirstChild("Humanoid")
-            if humanoid then
-                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-            end
+            if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end
         end
     end
 end)
@@ -386,9 +333,7 @@ RunService.Heartbeat:Connect(function()
     if not hrp then return end
     if LastPosition then
         local distance = (hrp.Position - LastPosition).Magnitude
-        if distance > 50 then
-            hrp.CFrame = CFrame.new(LastPosition)
-        end
+        if distance > 50 then hrp.CFrame = CFrame.new(LastPosition) end
     end
     LastPosition = hrp.Position
 end)
@@ -408,9 +353,7 @@ RunService.Stepped:Connect(function()
         local char = LocalPlayer.Character
         if char then
             for _, part in pairs(char:GetDescendants()) do
-                if part:IsA("BasePart") and part.CanCollide then
-                    part.CanCollide = false
-                end
+                if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end
             end
         end
     end
@@ -423,20 +366,17 @@ local function startFly()
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
-    
     local bg = Instance.new("BodyGyro")
     bg.P = 9e4
     bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
     bg.CFrame = hrp.CFrame
     bg.Parent = hrp
     FlyBodyGyro = bg
-    
     local bv = Instance.new("BodyVelocity")
     bv.Velocity = Vector3.new(0, 0, 0)
     bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
     bv.Parent = hrp
     FlyBodyVelocity = bv
-    
     FlyConnection = RunService.Heartbeat:Connect(function()
         if not Config.Fly then
             if FlyBodyVelocity then FlyBodyVelocity:Destroy() end
@@ -445,27 +385,13 @@ local function startFly()
         end
         local moveDir = Vector3.new(0, 0, 0)
         local cam = Workspace.CurrentCamera
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-            moveDir = moveDir + cam.CFrame.LookVector
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-            moveDir = moveDir - cam.CFrame.LookVector
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-            moveDir = moveDir - cam.CFrame.RightVector
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-            moveDir = moveDir + cam.CFrame.RightVector
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-            moveDir = moveDir + Vector3.new(0, 1, 0)
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-            moveDir = moveDir - Vector3.new(0, 1, 0)
-        end
-        if moveDir.Magnitude > 0 then
-            moveDir = moveDir.Unit * Config.FlySpeed
-        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+        if moveDir.Magnitude > 0 then moveDir = moveDir.Unit * Config.FlySpeed end
         FlyBodyVelocity.Velocity = moveDir
         FlyBodyGyro.CFrame = cam.CFrame
     end)
@@ -478,7 +404,6 @@ local function createESP(player)
     local hrp = player.Character:FindFirstChild("HumanoidRootPart")
     local humanoid = player.Character:FindFirstChild("Humanoid")
     if not hrp or not humanoid then return end
-    
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "DeepSeekESP"
     billboard.Adornee = hrp
@@ -486,7 +411,6 @@ local function createESP(player)
     billboard.StudsOffset = Vector3.new(0, 3, 0)
     billboard.AlwaysOnTop = true
     billboard.Parent = hrp
-    
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "NameLabel"
     nameLabel.Size = UDim2.new(1, 0, 0, 20)
@@ -497,7 +421,6 @@ local function createESP(player)
     nameLabel.TextSize = 14
     nameLabel.Font = Enum.Font.GothamBold
     nameLabel.Parent = billboard
-    
     local healthLabel = Instance.new("TextLabel")
     healthLabel.Name = "HealthLabel"
     healthLabel.Size = UDim2.new(1, 0, 0, 16)
@@ -509,7 +432,6 @@ local function createESP(player)
     healthLabel.TextSize = 12
     healthLabel.Font = Enum.Font.Gotham
     healthLabel.Parent = billboard
-    
     local distLabel = Instance.new("TextLabel")
     distLabel.Name = "DistLabel"
     distLabel.Size = UDim2.new(1, 0, 0, 16)
@@ -521,7 +443,6 @@ local function createESP(player)
     distLabel.TextSize = 12
     distLabel.Font = Enum.Font.Gotham
     distLabel.Parent = billboard
-    
     table.insert(ESPObjects, {player = player, billboard = billboard})
 end
 
@@ -536,7 +457,6 @@ local function updateESP()
                     local nameLabel = data.billboard:FindFirstChild("NameLabel")
                     local healthLabel = data.billboard:FindFirstChild("HealthLabel")
                     local distLabel = data.billboard:FindFirstChild("DistLabel")
-                    
                     if nameLabel then
                         nameLabel.Visible = Config.ESPName
                         nameLabel.TextColor3 = Config.ESPColor
@@ -561,9 +481,7 @@ end
 
 local function enableESP()
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            createESP(player)
-        end
+        if player ~= LocalPlayer then createESP(player) end
     end
 end
 
@@ -609,9 +527,7 @@ local function applyGraphics()
     end
     if Config.RemoveTextures then
         for _, v in pairs(Workspace:GetDescendants()) do
-            if v:IsA("Decal") or v:IsA("Texture") then
-                v.Transparency = 1
-            end
+            if v:IsA("Decal") or v:IsA("Texture") then v.Transparency = 1 end
         end
     end
     if Config.OptimizeGraphics then
@@ -621,7 +537,7 @@ local function applyGraphics()
     end
 end
 
--- FPS Counter
+-- FPS
 local function enableFPS()
     if FPSLabel then FPSLabel:Destroy() end
     FPSLabel = Instance.new("TextLabel")
@@ -634,7 +550,6 @@ local function enableFPS()
     FPSLabel.Font = Enum.Font.GothamBold
     FPSLabel.Text = "FPS: 60"
     FPSLabel.Parent = ScreenGui
-    
     local frames = 0
     local lastTime = tick()
     if FPSConnection then FPSConnection:Disconnect() end
@@ -656,34 +571,13 @@ task.spawn(function()
             local char = LocalPlayer.Character
             if char then
                 local tool = char:FindFirstChildOfClass("Tool")
-                if tool and string.find(string.lower(tool.Name), "rod") then
-                    tool:Activate()
-                end
+                if tool and string.find(string.lower(tool.Name), "rod") then tool:Activate() end
             end
         end
     end
 end)
 
--- Auto Raid
-RunService.Heartbeat:Connect(function()
-    if Config.AutoRaid then
-        -- Logic auto raid (cần điều chỉnh theo game)
-        local char = LocalPlayer.Character
-        if char and char:FindFirstChild("HumanoidRootPart") then
-            -- Tìm raid entrance
-            for _, obj in pairs(Workspace:GetDescendants()) do
-                if obj:IsA("Model") and string.find(string.lower(obj.Name), "raid") then
-                    local hrp = obj:FindFirstChild("HumanoidRootPart")
-                    if hrp then
-                        char.HumanoidRootPart.CFrame = CFrame.new(hrp.Position)
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- God Mode (client-side only)
+-- God Mode
 RunService.Heartbeat:Connect(function()
     if Config.GodMode then
         local char = LocalPlayer.Character
@@ -697,14 +591,16 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Anti Ban
-if Config.AntiBan then
-    -- Random delay để tránh phát hiện
-    local originalWait = task.wait
-    task.wait = function(t)
-        return originalWait(t + math.random() * 0.1)
+-- Auto Combo
+RunService.Heartbeat:Connect(function()
+    if Config.AutoCombo then
+        local char = LocalPlayer.Character
+        if char then
+            local tool = char:FindFirstChildOfClass("Tool")
+            if tool then tool:Activate() end
+        end
     end
-end
+end)
 
 -- ==================== GUI ====================
 local ScreenGui = Instance.new("ScreenGui")
@@ -713,7 +609,6 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- ICON
 local IconButton = Instance.new("TextButton")
 IconButton.Name = "IconButton"
 IconButton.Size = UDim2.new(0, 70, 0, 70)
@@ -738,19 +633,9 @@ IconStroke.Color = Color3.fromRGB(0, 200, 255)
 IconStroke.Thickness = 3
 IconStroke.Parent = IconButton
 
-local IconGradient = Instance.new("UIGradient")
-IconGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 200, 255)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 50, 255)),
-})
-IconGradient.Parent = IconStroke
-
-local pulseTween = TweenService:Create(IconStroke, TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
-    Thickness = 5,
-})
+local pulseTween = TweenService:Create(IconStroke, TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Thickness = 5})
 pulseTween:Play()
 
--- MAIN FRAME
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = UDim2.new(0, 500, 0, 600)
@@ -769,7 +654,6 @@ MainStroke.Color = Color3.fromRGB(0, 200, 255)
 MainStroke.Thickness = 2
 MainStroke.Parent = MainFrame
 
--- Title
 local TitleBar = Instance.new("Frame")
 TitleBar.Name = "TitleBar"
 TitleBar.Size = UDim2.new(1, 0, 0, 45)
@@ -792,7 +676,7 @@ local TitleText = Instance.new("TextLabel")
 TitleText.Size = UDim2.new(1, -100, 1, 0)
 TitleText.Position = UDim2.new(0, 45, 0, 0)
 TitleText.BackgroundTransparency = 1
-TitleText.Text = "DEEPSEEK BLOX FRUIT v4"
+TitleText.Text = "DEEPSEEK BLOX FRUIT v5"
 TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleText.TextSize = 16
 TitleText.Font = Enum.Font.GothamBold
@@ -824,7 +708,6 @@ local CloseCorner = Instance.new("UICorner")
 CloseCorner.CornerRadius = UDim.new(0, 6)
 CloseCorner.Parent = CloseButton
 
--- TAB BAR
 local TabBar = Instance.new("Frame")
 TabBar.Size = UDim2.new(1, -20, 0, 35)
 TabBar.Position = UDim2.new(0, 10, 0, 55)
@@ -847,14 +730,12 @@ TabPadding.PaddingLeft = UDim.new(0, 4)
 TabPadding.PaddingTop = UDim.new(0, 4)
 TabPadding.Parent = TabBar
 
--- Content
 local ContentFrame = Instance.new("Frame")
 ContentFrame.Size = UDim2.new(1, -20, 1, -115)
 ContentFrame.Position = UDim2.new(0, 10, 0, 100)
 ContentFrame.BackgroundTransparency = 1
 ContentFrame.Parent = MainFrame
 
--- Tạo tab
 local Tabs = {}
 local ActiveTab = nil
 
@@ -869,11 +750,9 @@ local function createTab(name, order)
     tabBtn.BorderSizePixel = 0
     tabBtn.LayoutOrder = order
     tabBtn.Parent = TabBar
-    
     local tc = Instance.new("UICorner")
     tc.CornerRadius = UDim.new(0, 6)
     tc.Parent = tabBtn
-    
     local scroll = Instance.new("ScrollingFrame")
     scroll.Size = UDim2.new(1, 0, 1, 0)
     scroll.BackgroundTransparency = 1
@@ -883,14 +762,11 @@ local function createTab(name, order)
     scroll.CanvasSize = UDim2.new(0, 0, 0, 1200)
     scroll.Visible = false
     scroll.Parent = ContentFrame
-    
     local layout = Instance.new("UIListLayout")
     layout.Padding = UDim.new(0, 8)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Parent = scroll
-    
     Tabs[name] = {button = tabBtn, scroll = scroll}
-    
     tabBtn.MouseButton1Click:Connect(function()
         for _, t in pairs(Tabs) do
             t.button.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
@@ -910,24 +786,20 @@ createTab("Visual", 3)
 createTab("Misc", 4)
 createTab("Combat", 5)
 
--- Active tab mặc định
 Tabs["Farm"].button.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
 Tabs["Farm"].button.TextColor3 = Color3.fromRGB(255, 255, 255)
 Tabs["Farm"].scroll.Visible = true
 ActiveTab = "Farm"
 
--- ==================== UI COMPONENTS ====================
 local function createToggle(parent, name, configKey, callback)
     local ToggleFrame = Instance.new("Frame")
     ToggleFrame.Size = UDim2.new(1, 0, 0, 42)
     ToggleFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
     ToggleFrame.BorderSizePixel = 0
     ToggleFrame.Parent = parent
-
     local TC = Instance.new("UICorner")
     TC.CornerRadius = UDim.new(0, 8)
     TC.Parent = ToggleFrame
-
     local TLabel = Instance.new("TextLabel")
     TLabel.Size = UDim2.new(0.7, 0, 1, 0)
     TLabel.Position = UDim2.new(0, 12, 0, 0)
@@ -938,7 +810,6 @@ local function createToggle(parent, name, configKey, callback)
     TLabel.Font = Enum.Font.Gotham
     TLabel.TextXAlignment = Enum.TextXAlignment.Left
     TLabel.Parent = ToggleFrame
-
     local TButton = Instance.new("TextButton")
     TButton.Size = UDim2.new(0, 55, 0, 26)
     TButton.Position = UDim2.new(1, -65, 0.5, -13)
@@ -949,11 +820,9 @@ local function createToggle(parent, name, configKey, callback)
     TButton.Font = Enum.Font.GothamBold
     TButton.BorderSizePixel = 0
     TButton.Parent = ToggleFrame
-
     local TBC = Instance.new("UICorner")
     TBC.CornerRadius = UDim.new(0, 6)
     TBC.Parent = TButton
-
     TButton.MouseButton1Click:Connect(function()
         Config[configKey] = not Config[configKey]
         if Config[configKey] then
@@ -975,11 +844,9 @@ local function createSlider(parent, name, configKey, min, max, default, callback
     SliderFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
     SliderFrame.BorderSizePixel = 0
     SliderFrame.Parent = parent
-
     local SC = Instance.new("UICorner")
     SC.CornerRadius = UDim.new(0, 8)
     SC.Parent = SliderFrame
-
     local SLabel = Instance.new("TextLabel")
     SLabel.Size = UDim2.new(0.7, 0, 0, 20)
     SLabel.Position = UDim2.new(0, 12, 0, 8)
@@ -990,28 +857,23 @@ local function createSlider(parent, name, configKey, min, max, default, callback
     SLabel.Font = Enum.Font.Gotham
     SLabel.TextXAlignment = Enum.TextXAlignment.Left
     SLabel.Parent = SliderFrame
-
     local SBar = Instance.new("Frame")
     SBar.Size = UDim2.new(1, -24, 0, 8)
     SBar.Position = UDim2.new(0, 12, 0, 40)
     SBar.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
     SBar.BorderSizePixel = 0
     SBar.Parent = SliderFrame
-
     local SBC = Instance.new("UICorner")
     SBC.CornerRadius = UDim.new(1, 0)
     SBC.Parent = SBar
-
     local SFill = Instance.new("Frame")
     SFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
     SFill.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
     SFill.BorderSizePixel = 0
     SFill.Parent = SBar
-
     local SFC = Instance.new("UICorner")
     SFC.CornerRadius = UDim.new(1, 0)
     SFC.Parent = SFill
-
     local SBtn = Instance.new("TextButton")
     SBtn.Size = UDim2.new(0, 18, 0, 18)
     SBtn.Position = UDim2.new((default - min) / (max - min), -9, 0.5, -9)
@@ -1019,13 +881,10 @@ local function createSlider(parent, name, configKey, min, max, default, callback
     SBtn.Text = ""
     SBtn.BorderSizePixel = 0
     SBtn.Parent = SBar
-
     local SBC2 = Instance.new("UICorner")
     SBC2.CornerRadius = UDim.new(1, 0)
     SBC2.Parent = SBtn
-
     local dragging = false
-
     local function updateSlider(input)
         local barPos = SBar.AbsolutePosition.X
         local barWidth = SBar.AbsoluteSize.X
@@ -1037,19 +896,16 @@ local function createSlider(parent, name, configKey, min, max, default, callback
         Config[configKey] = value
         if callback then callback(value) end
     end
-
     SBtn.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
         end
     end)
-
     SBtn.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = false
         end
     end)
-
     UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             updateSlider(input)
@@ -1063,11 +919,9 @@ local function createDropdown(parent, name, configKey, options, default, callbac
     Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
     Frame.BorderSizePixel = 0
     Frame.Parent = parent
-
     local FC = Instance.new("UICorner")
     FC.CornerRadius = UDim.new(0, 8)
     FC.Parent = Frame
-
     local Label = Instance.new("TextLabel")
     Label.Size = UDim2.new(0.5, 0, 1, 0)
     Label.Position = UDim2.new(0, 12, 0, 0)
@@ -1078,7 +932,6 @@ local function createDropdown(parent, name, configKey, options, default, callbac
     Label.Font = Enum.Font.Gotham
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = Frame
-
     local Btn = Instance.new("TextButton")
     Btn.Size = UDim2.new(0.4, 0, 0, 28)
     Btn.Position = UDim2.new(0.55, 0, 0.5, -14)
@@ -1089,11 +942,9 @@ local function createDropdown(parent, name, configKey, options, default, callbac
     Btn.Font = Enum.Font.Gotham
     Btn.BorderSizePixel = 0
     Btn.Parent = Frame
-
     local BC = Instance.new("UICorner")
     BC.CornerRadius = UDim.new(0, 6)
     BC.Parent = Btn
-
     local Dropdown = Instance.new("Frame")
     Dropdown.Size = UDim2.new(0.4, 0, 0, #options * 26)
     Dropdown.Position = UDim2.new(0.55, 0, 1, 4)
@@ -1102,14 +953,11 @@ local function createDropdown(parent, name, configKey, options, default, callbac
     Dropdown.Visible = false
     Dropdown.ZIndex = 10
     Dropdown.Parent = Frame
-
     local DC = Instance.new("UICorner")
     DC.CornerRadius = UDim.new(0, 6)
     DC.Parent = Dropdown
-
     local DL = Instance.new("UIListLayout")
     DL.Parent = Dropdown
-
     for _, option in pairs(options) do
         local OptBtn = Instance.new("TextButton")
         OptBtn.Size = UDim2.new(1, 0, 0, 26)
@@ -1120,7 +968,6 @@ local function createDropdown(parent, name, configKey, options, default, callbac
         OptBtn.Font = Enum.Font.Gotham
         OptBtn.ZIndex = 11
         OptBtn.Parent = Dropdown
-
         OptBtn.MouseButton1Click:Connect(function()
             Config[configKey] = option
             Btn.Text = option
@@ -1128,13 +975,11 @@ local function createDropdown(parent, name, configKey, options, default, callbac
             if callback then callback(option) end
         end)
     end
-
     Btn.MouseButton1Click:Connect(function()
         Dropdown.Visible = not Dropdown.Visible
     end)
 end
 
--- ==================== BUILD TAB FARM ====================
 local farmTab = Tabs["Farm"].scroll
 createToggle(farmTab, "Auto Farm", "AutoFarm")
 createToggle(farmTab, "Auto Quest", "AutoQuest")
@@ -1146,7 +991,6 @@ createToggle(farmTab, "Auto Sell", "AutoSell")
 createToggle(farmTab, "Auto Chest", "AutoChest")
 createToggle(farmTab, "Farm Boss", "FarmBoss")
 
--- ==================== BUILD TAB MOVE ====================
 local moveTab = Tabs["Move"].scroll
 createToggle(moveTab, "Speed Hack", "SpeedHack")
 createSlider(moveTab, "Speed Value", "SpeedValue", 16, 500, 100)
@@ -1160,7 +1004,6 @@ createToggle(moveTab, "Noclip", "Noclip")
 createToggle(moveTab, "Anti Teleport", "AntiTeleport")
 createToggle(moveTab, "Anti AFK", "AntiAFK")
 
--- ==================== BUILD TAB VISUAL ====================
 local visualTab = Tabs["Visual"].scroll
 createToggle(visualTab, "ESP", "ESP", function(v)
     if v then enableESP() else disableESP() end
@@ -1173,7 +1016,6 @@ createToggle(visualTab, "Remove Fog", "RemoveFog", function() applyGraphics() en
 createToggle(visualTab, "Remove Textures", "RemoveTextures", function() applyGraphics() end)
 createToggle(visualTab, "Optimize Graphics", "OptimizeGraphics", function() applyGraphics() end)
 
--- ==================== BUILD TAB MISC ====================
 local miscTab = Tabs["Misc"].scroll
 createToggle(miscTab, "Auto Haki", "AutoHaki")
 createToggle(miscTab, "Infinite Energy", "InfiniteEnergy")
@@ -1186,18 +1028,16 @@ createToggle(miscTab, "Show FPS", "ShowFPS", function(v)
     end
 end)
 createToggle(miscTab, "Auto Fish", "AutoFish")
-createToggle(miscTab, "Auto Raid", "AutoRaid")
 createToggle(miscTab, "God Mode", "GodMode")
 createToggle(miscTab, "Anti Ban", "AntiBan")
 
--- ==================== BUILD TAB COMBAT ====================
 local combatTab = Tabs["Combat"].scroll
 createToggle(combatTab, "Auto Combo", "AutoCombo")
 createToggle(combatTab, "Auto Dodge", "AutoDodge")
 createToggle(combatTab, "Auto Skill", "AutoSkill")
 createSlider(combatTab, "Combat Range", "CombatRange", 10, 100, 30)
+createToggle(combatTab, "Auto Block", "AutoBlock")
 
--- ==================== DRAG MENU ====================
 local draggingMain = false
 local dragStart = nil
 local startPos = nil
@@ -1223,7 +1063,6 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- ==================== ICON CLICK ====================
 IconButton.MouseButton1Click:Connect(function()
     MainFrame.Visible = not MainFrame.Visible
 end)
@@ -1232,9 +1071,8 @@ CloseButton.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
 end)
 
--- ==================== NOTIFY ====================
 StarterGui:SetCore("SendNotification", {
-    Title = "DeepSeek Menu v4";
-    Text = "Đã fix Auto Farm! Thêm 5 tab: Farm, Move, Visual, Misc, Combat. Icon 🐋 ở giữa màn hình.";
+    Title = "DeepSeek Menu v5";
+    Text = "Đã fix lỗi! Thêm Combat tab, Anti Ban, God Mode. Icon 🐋 ở giữa màn hình.";
     Duration = 5;
 })
